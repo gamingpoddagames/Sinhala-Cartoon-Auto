@@ -1,1 +1,1252 @@
+import bpy
+import math
+import shutil
+import subprocess
+from pathlib import Path
 
+
+# ============================================================
+# CARTOON FACTORY
+# REAL CARTOON WALKING ANIMATION V2
+# Blender 5.0.1
+# ============================================================
+
+
+ROOT = Path(r"C:\CartoonFactory")
+
+SOURCE_BLEND = (
+    ROOT
+    / "characters"
+    / "cartoon_character_v2.blend"
+)
+
+OUTPUT_DIR = (
+    ROOT
+    / "output"
+)
+
+FRAME_DIR = (
+    OUTPUT_DIR
+    / "walking_animation_frames"
+)
+
+OUTPUT_VIDEO = (
+    OUTPUT_DIR
+    / "cartoon_walking_test.mp4"
+)
+
+OUTPUT_BLEND = (
+    ROOT
+    / "characters"
+    / "cartoon_character_walking_v2.blend"
+)
+
+
+OUTPUT_DIR.mkdir(
+    parents=True,
+    exist_ok=True
+)
+
+FRAME_DIR.mkdir(
+    parents=True,
+    exist_ok=True
+)
+
+
+# ============================================================
+# FFMPEG
+# ============================================================
+
+def find_ffmpeg():
+
+    paths = [
+
+        shutil.which("ffmpeg"),
+
+        r"C:\ffmpeg\bin\ffmpeg.exe",
+
+        r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
+
+        r"C:\Program Files\FFmpeg\bin\ffmpeg.exe",
+
+    ]
+
+    for p in paths:
+
+        if not p:
+            continue
+
+        if Path(p).exists():
+
+            return str(p)
+
+    return None
+
+
+FFMPEG = find_ffmpeg()
+
+
+# ============================================================
+# START
+# ============================================================
+
+print("")
+print("======================================================")
+print(" CARTOON FACTORY")
+print(" REAL WALKING ANIMATION V2")
+print("======================================================")
+print("")
+
+
+# ============================================================
+# LOAD
+# ============================================================
+
+if not SOURCE_BLEND.exists():
+
+    raise RuntimeError(
+        f"Missing character file:\n{SOURCE_BLEND}"
+    )
+
+
+print("Loading:")
+print(SOURCE_BLEND)
+print("")
+
+
+bpy.ops.wm.open_mainfile(
+    filepath=str(SOURCE_BLEND)
+)
+
+
+scene = bpy.context.scene
+
+
+# ============================================================
+# HELPERS
+# ============================================================
+
+def obj(name):
+
+    result = bpy.data.objects.get(name)
+
+    if result is None:
+
+        raise RuntimeError(
+            f"Required object not found: {name}"
+        )
+
+    return result
+
+
+def optional(name):
+
+    return bpy.data.objects.get(name)
+
+
+def key(object, path, frame):
+
+    object_.keyframe_insert(
+        data_path=path,
+        frame=frame
+    )
+
+
+def key_rotation(
+    object_,
+    frame,
+    x=None,
+    y=None,
+    z=None
+):
+
+    r = object_.rotation_euler.copy()
+
+    if x is not None:
+        r.x = math.radians(x)
+
+    if y is not None:
+        r.y = math.radians(y)
+
+    if z is not None:
+        r.z = math.radians(z)
+
+    object_.rotation_euler = r
+
+    object_.keyframe_insert(
+        data_path="rotation_euler",
+        frame=frame
+    )
+
+
+def key_location(
+    object_,
+    frame,
+    x=None,
+    y=None,
+    z=None
+):
+
+    p = object_.location.copy()
+
+    if x is not None:
+        p.x = x
+
+    if y is not None:
+        p.y = y
+
+    if z is not None:
+        p.z = z
+
+    object_.location = p
+
+    object_.keyframe_insert(
+        data_path="location",
+        frame=frame
+    )
+
+
+# ============================================================
+# CHARACTER OBJECTS
+# ============================================================
+
+def character(name):
+
+    return {
+
+        "root":
+            obj(f"{name}_ROOT"),
+
+        "torso":
+            obj(f"{name}_Torso"),
+
+        "head":
+            obj(f"{name}_Head"),
+
+        "leg_l":
+            obj(f"{name}_Leg_L"),
+
+        "leg_r":
+            obj(f"{name}_Leg_R"),
+
+        "shoe_l":
+            obj(f"{name}_Shoe_L"),
+
+        "shoe_r":
+            obj(f"{name}_Shoe_R"),
+
+        "arm_l":
+            obj(f"{name}_Arm_L"),
+
+        "arm_r":
+            obj(f"{name}_Arm_R"),
+
+        "hand_l":
+            obj(f"{name}_Hand_L"),
+
+        "hand_r":
+            obj(f"{name}_Hand_R"),
+
+        "mouth":
+            obj(f"{name}_Mouth"),
+
+        "eye_l":
+            obj(f"{name}_Eye_L"),
+
+        "eye_r":
+            obj(f"{name}_Eye_R"),
+
+        "pupil_l":
+            obj(f"{name}_Pupil_L"),
+
+        "pupil_r":
+            obj(f"{name}_Pupil_R"),
+    }
+
+
+KAMAL = character("Kamal")
+
+NIMAL = character("Nimal")
+
+
+print("Kamal objects loaded.")
+
+print("Nimal objects loaded.")
+
+print("")
+
+
+# ============================================================
+# SAVE ORIGINAL TRANSFORMS
+# ============================================================
+
+def save_transforms(c):
+
+    result = {}
+
+    for name, object_ in c.items():
+
+        if object_ is None:
+            continue
+
+        result[name] = {
+
+            "location":
+                object_.location.copy(),
+
+            "rotation":
+                object_.rotation_euler.copy(),
+
+            "scale":
+                object_.scale.copy(),
+        }
+
+    return result
+
+
+KAMAL_ORIGINAL = save_transforms(KAMAL)
+
+NIMAL_ORIGINAL = save_transforms(NIMAL)
+
+
+# ============================================================
+# RESET CHARACTER
+# ============================================================
+
+def reset_character(
+    c,
+    original
+):
+
+    for name, values in original.items():
+
+        object_ = c[name]
+
+        object_.location = values["location"].copy()
+
+        object_.rotation_euler = (
+            values["rotation"].copy()
+        )
+
+        object_.scale = values["scale"].copy()
+
+
+# ============================================================
+# WALK CYCLE
+# ============================================================
+
+def walking_cycle(
+    c,
+    original,
+    start_frame,
+    cycles,
+    direction=1
+):
+
+    root = c["root"]
+
+    leg_l = c["leg_l"]
+    leg_r = c["leg_r"]
+
+    shoe_l = c["shoe_l"]
+    shoe_r = c["shoe_r"]
+
+    arm_l = c["arm_l"]
+    arm_r = c["arm_r"]
+
+    hand_l = c["hand_l"]
+    hand_r = c["hand_r"]
+
+    torso = c["torso"]
+    head = c["head"]
+
+
+    # --------------------------------------------------------
+    # RESET
+    # --------------------------------------------------------
+
+    reset_character(
+        c,
+        original
+    )
+
+
+    # --------------------------------------------------------
+    # WALK PARAMETERS
+    # --------------------------------------------------------
+
+    cycle_length = 24
+
+    total_frames = (
+        cycle_length
+        * cycles
+    )
+
+
+    # --------------------------------------------------------
+    # KEYFRAME WALK
+    # --------------------------------------------------------
+
+    for cycle in range(cycles):
+
+        base = (
+            start_frame
+            + cycle * cycle_length
+        )
+
+
+        # ====================================================
+        # CONTACT LEFT
+        # ====================================================
+
+        f = base
+
+        key_rotation(
+            leg_l,
+            f,
+            y=25 * direction
+        )
+
+        key_rotation(
+            leg_r,
+            f,
+            y=-25 * direction
+        )
+
+        key_rotation(
+            shoe_l,
+            f,
+            y=18 * direction
+        )
+
+        key_rotation(
+            shoe_r,
+            f,
+            y=-18 * direction
+        )
+
+
+        # ARMS OPPOSITE LEGS
+
+        key_rotation(
+            arm_l,
+            f,
+            y=-22 * direction
+        )
+
+        key_rotation(
+            arm_r,
+            f,
+            y=22 * direction
+        )
+
+        key_rotation(
+            hand_l,
+            f,
+            y=-10 * direction
+        )
+
+        key_rotation(
+            hand_r,
+            f,
+            y=10 * direction
+        )
+
+
+        # BODY
+
+        key_rotation(
+            torso,
+            f,
+            y=2 * direction
+        )
+
+
+        # HEAD
+
+        key_rotation(
+            head,
+            f,
+            y=-2 * direction
+        )
+
+
+        # ====================================================
+        # PASSING
+        # ====================================================
+
+        f = base + 6
+
+        key_rotation(
+            leg_l,
+            f,
+            y=0
+        )
+
+        key_rotation(
+            leg_r,
+            f,
+            y=0
+        )
+
+        key_rotation(
+            shoe_l,
+            f,
+            y=0
+        )
+
+        key_rotation(
+            shoe_r,
+            f,
+            y=0
+        )
+
+
+        key_rotation(
+            arm_l,
+            f,
+            y=0
+        )
+
+        key_rotation(
+            arm_r,
+            f,
+            y=0
+        )
+
+        key_rotation(
+            hand_l,
+            f,
+            y=0
+        )
+
+        key_rotation(
+            hand_r,
+            f,
+            y=0
+        )
+
+        key_rotation(
+            torso,
+            f,
+            y=-2 * direction
+        )
+
+        key_rotation(
+            head,
+            f,
+            y=2 * direction
+        )
+
+
+        # ====================================================
+        # CONTACT RIGHT
+        # ====================================================
+
+        f = base + 12
+
+        key_rotation(
+            leg_l,
+            f,
+            y=-25 * direction
+        )
+
+        key_rotation(
+            leg_r,
+            f,
+            y=25 * direction
+        )
+
+        key_rotation(
+            shoe_l,
+            f,
+            y=-18 * direction
+        )
+
+        key_rotation(
+            shoe_r,
+            f,
+            y=18 * direction
+        )
+
+
+        # OPPOSITE ARMS
+
+        key_rotation(
+            arm_l,
+            f,
+            y=22 * direction
+        )
+
+        key_rotation(
+            arm_r,
+            f,
+            y=-22 * direction
+        )
+
+        key_rotation(
+            hand_l,
+            f,
+            y=10 * direction
+        )
+
+        key_rotation(
+            hand_r,
+            f,
+            y=-10 * direction
+        )
+
+
+        key_rotation(
+            torso,
+            f,
+            y=2 * direction
+        )
+
+        key_rotation(
+            head,
+            f,
+            y=-2 * direction
+        )
+
+
+        # ====================================================
+        # PASSING
+        # ====================================================
+
+        f = base + 18
+
+        key_rotation(
+            leg_l,
+            f,
+            y=0
+        )
+
+        key_rotation(
+            leg_r,
+            f,
+            y=0
+        )
+
+        key_rotation(
+            shoe_l,
+            f,
+            y=0
+        )
+
+        key_rotation(
+            shoe_r,
+            f,
+            y=0
+        )
+
+
+        key_rotation(
+            arm_l,
+            f,
+            y=0
+        )
+
+        key_rotation(
+            arm_r,
+            f,
+            y=0
+        )
+
+        key_rotation(
+            hand_l,
+            f,
+            y=0
+        )
+
+        key_rotation(
+            hand_r,
+            f,
+            y=0
+        )
+
+
+        key_rotation(
+            torso,
+            f,
+            y=-2 * direction
+        )
+
+        key_rotation(
+            head,
+            f,
+            y=2 * direction
+        )
+
+
+        # ====================================================
+        # BODY BOUNCE
+        # ====================================================
+
+        root_original = (
+            original["root"]["location"]
+        )
+
+        bounce = (
+            0.035
+            if cycle % 2 == 0
+            else 0
+        )
+
+        key_location(
+            root,
+            f,
+            z=root_original.z + bounce
+        )
+
+
+    # ========================================================
+    # END
+    # ========================================================
+
+    final_frame = (
+        start_frame
+        + total_frames
+    )
+
+    for part in [
+        leg_l,
+        leg_r,
+        shoe_l,
+        shoe_r,
+        arm_l,
+        arm_r,
+        hand_l,
+        hand_r,
+        torso,
+        head
+    ]:
+
+        key_rotation(
+            part,
+            final_frame,
+            x=0,
+            y=0,
+            z=0
+        )
+
+
+# ============================================================
+# WALKING POSITIONS
+# ============================================================
+
+print("Creating Kamal walking cycle...")
+
+walking_cycle(
+    KAMAL,
+    KAMAL_ORIGINAL,
+    start_frame=1,
+    cycles=6,
+    direction=1
+)
+
+
+print("Creating Nimal walking cycle...")
+
+walking_cycle(
+    NIMAL,
+    NIMAL_ORIGINAL,
+    start_frame=49,
+    cycles=6,
+    direction=1
+)
+
+
+# ============================================================
+# CHARACTER FORWARD MOVEMENT
+# ============================================================
+
+print("Creating character movement...")
+
+
+kamal_root = KAMAL["root"]
+
+nimal_root = NIMAL["root"]
+
+
+kamal_start = (
+    KAMAL_ORIGINAL["root"]["location"]
+)
+
+nimal_start = (
+    NIMAL_ORIGINAL["root"]["location"]
+)
+
+
+# Kamal walks from left toward center
+
+key_location(
+    kamal_root,
+    1,
+    x=kamal_start.x - 3.5
+)
+
+key_location(
+    kamal_root,
+    72,
+    x=kamal_start.x - 1.8
+)
+
+key_location(
+    kamal_root,
+    144,
+    x=kamal_start.x + 0.2
+)
+
+
+# Nimal starts later
+
+key_location(
+    nimal_root,
+    49,
+    x=nimal_start.x + 3.5
+)
+
+key_location(
+    nimal_root,
+    120,
+    x=nimal_start.x + 1.8
+)
+
+key_location(
+    nimal_root,
+    192,
+    x=nimal_start.x
+)
+
+
+# ============================================================
+# MOUTH TALKING
+# ============================================================
+
+def talking(
+    c,
+    start,
+    end
+):
+
+    mouth = c["mouth"]
+
+    original = mouth.scale.copy()
+
+
+    for frame in range(
+        start,
+        end,
+        8
+    ):
+
+        mouth.scale = (
+            original.x,
+            original.y,
+            original.z * 0.25
+        )
+
+        mouth.keyframe_insert(
+            data_path="scale",
+            frame=frame
+        )
+
+
+        mouth.scale = (
+            original.x * 1.05,
+            original.y,
+            original.z * 1.5
+        )
+
+        mouth.keyframe_insert(
+            data_path="scale",
+            frame=frame + 4
+        )
+
+
+    mouth.scale = original
+
+    mouth.keyframe_insert(
+        data_path="scale",
+        frame=end
+    )
+
+
+# Kamal talks first
+
+talking(
+    KAMAL,
+    25,
+    65
+)
+
+
+# Nimal talks second
+
+talking(
+    NIMAL,
+    80,
+    125
+)
+
+
+# ============================================================
+# BLINKING
+# ============================================================
+
+def blink(
+    c,
+    frame
+):
+
+    for eye_name in [
+        "eye_l",
+        "eye_r"
+    ]:
+
+        eye = c[eye_name]
+
+        original = eye.scale.copy()
+
+
+        eye.scale = original
+
+        eye.keyframe_insert(
+            data_path="scale",
+            frame=frame
+        )
+
+
+        eye.scale = (
+            original.x,
+            original.y,
+            original.z * 0.08
+        )
+
+        eye.keyframe_insert(
+            data_path="scale",
+            frame=frame + 2
+        )
+
+
+        eye.scale = original
+
+        eye.keyframe_insert(
+            data_path="scale",
+            frame=frame + 5
+        )
+
+
+for f in [35, 82, 135, 178]:
+
+    blink(
+        KAMAL,
+        f
+    )
+
+
+for f in [55, 105, 150, 185]:
+
+    blink(
+        NIMAL,
+        f
+    )
+
+
+# ============================================================
+# EYE LOOK
+# ============================================================
+
+def eye_look(
+    c,
+    frame,
+    amount
+):
+
+    for name in [
+        "pupil_l",
+        "pupil_r"
+    ]:
+
+        pupil = c[name]
+
+        position = pupil.location.copy()
+
+        pupil.location.x = (
+            position.x + amount
+        )
+
+        pupil.keyframe_insert(
+            data_path="location",
+            frame=frame
+        )
+
+
+eye_look(
+    KAMAL,
+    1,
+    0
+)
+
+eye_look(
+    KAMAL,
+    70,
+    -0.035
+)
+
+eye_look(
+    KAMAL,
+    145,
+    0.035
+)
+
+eye_look(
+    NIMAL,
+    49,
+    0
+)
+
+eye_look(
+    NIMAL,
+    120,
+    -0.035
+)
+
+eye_look(
+    NIMAL,
+    185,
+    0.035
+)
+
+
+# ============================================================
+# CAMERA
+# ============================================================
+
+camera = optional(
+    "Main_Camera"
+)
+
+if camera:
+
+    scene.camera = camera
+
+    camera.data.lens = 52
+
+
+# ============================================================
+# SCENE
+# ============================================================
+
+scene.render.engine = "BLENDER_EEVEE"
+
+scene.render.resolution_x = 1280
+
+scene.render.resolution_y = 720
+
+scene.render.resolution_percentage = 100
+
+scene.render.fps = 24
+
+scene.frame_start = 1
+
+scene.frame_end = 192
+
+scene.render.image_settings.file_format = "PNG"
+
+scene.render.film_transparent = False
+
+
+# ============================================================
+# FRAME DIRECTORY
+# ============================================================
+
+for old in FRAME_DIR.glob(
+    "frame_*.png"
+):
+
+    try:
+
+        old.unlink()
+
+    except Exception:
+
+        pass
+
+
+scene.render.filepath = str(
+    FRAME_DIR / "frame_"
+)
+
+
+# ============================================================
+# SAVE
+# ============================================================
+
+print("")
+print("Saving walking animation...")
+
+bpy.ops.wm.save_as_mainfile(
+    filepath=str(OUTPUT_BLEND)
+)
+
+
+print("")
+print("Saved:")
+print(OUTPUT_BLEND)
+
+
+# ============================================================
+# RENDER
+# ============================================================
+
+print("")
+print("======================================================")
+print(" RENDERING WALKING ANIMATION")
+print("======================================================")
+print("")
+
+
+bpy.ops.render.render(
+    animation=True
+)
+
+
+# ============================================================
+# COUNT FRAMES
+# ============================================================
+
+frames = list(
+    FRAME_DIR.glob(
+        "frame_*.png"
+    )
+)
+
+
+print("")
+print(
+    "PNG frames created:",
+    len(frames)
+)
+
+
+if len(frames) == 0:
+
+    raise RuntimeError(
+        "No animation frames were rendered."
+    )
+
+
+# ============================================================
+# CREATE MP4
+# ============================================================
+
+if FFMPEG is not None:
+
+    print("")
+    print("Creating MP4 with FFmpeg...")
+    print("")
+
+
+    command = [
+
+        FFMPEG,
+
+        "-y",
+
+        "-framerate",
+        "24",
+
+        "-start_number",
+        "1",
+
+        "-i",
+        str(
+            FRAME_DIR
+            / "frame_%04d.png"
+        ),
+
+        "-c:v",
+        "libx264",
+
+        "-preset",
+        "medium",
+
+        "-crf",
+        "18",
+
+        "-pix_fmt",
+        "yuv420p",
+
+        "-movflags",
+        "+faststart",
+
+        str(OUTPUT_VIDEO)
+    ]
+
+
+    result = subprocess.run(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True
+    )
+
+
+    print(
+        result.stdout
+    )
+
+
+    if result.returncode != 0:
+
+        raise RuntimeError(
+            "FFmpeg failed to create video."
+        )
+
+
+# ============================================================
+# DONE
+# ============================================================
+
+print("")
+print("======================================================")
+print(" REAL WALKING ANIMATION COMPLETE")
+print("======================================================")
+print("")
+
+print("BLENDER:")
+print(OUTPUT_BLEND)
+
+print("")
+
+print("FRAMES:")
+print(FRAME_DIR)
+
+print("")
+
+if OUTPUT_VIDEO.exists():
+
+    print("VIDEO:")
+    print(OUTPUT_VIDEO)
+
+print("")
+
+print("Animation contains:")
+print("  WALKING")
+print("  LEFT/RIGHT LEG ALTERNATION")
+print("  SHOE MOVEMENT")
+print("  OPPOSITE ARM SWING")
+print("  HAND MOVEMENT")
+print("  BODY BOUNCE")
+print("  HEAD MOVEMENT")
+print("  EYE MOVEMENT")
+print("  BLINKING")
+print("  TALKING MOUTH")
+print("  CHARACTER FORWARD MOVEMENT")
+
+print("")
+print("======================================================")
+print(" CARTOON FACTORY DONE")
+print("======================================================")
