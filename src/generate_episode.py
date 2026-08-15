@@ -1,9 +1,14 @@
 import json
+import os
 import subprocess
 from pathlib import Path
 
 from story_engine import make_story
 
+
+# ============================================================
+# PATHS
+# ============================================================
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -18,27 +23,43 @@ BLENDER = Path("/opt/blender/blender")
 FFMPEG = "ffmpeg"
 
 
+# ============================================================
+# OUTPUT DIRECTORY
+# ============================================================
+
 def prepare_output():
 
-    # If output exists as a FILE, remove the bad file.
-    if OUTPUT_DIR.exists() and not OUTPUT_DIR.is_dir():
+    # GitHub does not need to contain an output folder.
+    # The runner creates it automatically.
 
-        print("Removing invalid output file:")
-        print(OUTPUT_DIR)
+    if OUTPUT_DIR.exists():
 
-        OUTPUT_DIR.unlink()
+        if OUTPUT_DIR.is_file():
 
-    # Create output directory.
+            print(
+                "Removing invalid output file:"
+            )
+
+            print(
+                OUTPUT_DIR
+            )
+
+            OUTPUT_DIR.unlink()
+
     OUTPUT_DIR.mkdir(
         parents=True,
         exist_ok=True
     )
 
 
+# ============================================================
+# EPISODE NUMBER
+# ============================================================
+
 def get_episode_number():
 
-    # GitHub Actions provides a unique run number.
-    import os
+    # GitHub Actions gives every workflow run
+    # a unique number.
 
     run_number = os.environ.get(
         "GITHUB_RUN_NUMBER"
@@ -46,19 +67,31 @@ def get_episode_number():
 
     if run_number:
 
-        return int(run_number)
+        try:
 
-    # Local testing fallback.
-    state = ROOT / ".episode_state"
+            return int(run_number)
 
-    if state.exists():
+        except ValueError:
+
+            pass
+
+    # Local fallback
+
+    state_file = (
+        ROOT / ".episode_state"
+    )
+
+    if state_file.exists():
 
         try:
+
             number = int(
-                state.read_text(
+                state_file.read_text(
                     encoding="utf-8"
-                )
-            ) + 1
+                ).strip()
+            )
+
+            number += 1
 
         except Exception:
 
@@ -68,7 +101,7 @@ def get_episode_number():
 
         number = 1
 
-    state.write_text(
+    state_file.write_text(
         str(number),
         encoding="utf-8"
     )
@@ -76,57 +109,52 @@ def get_episode_number():
     return number
 
 
-def main():
+# ============================================================
+# CHECK CHARACTER
+# ============================================================
 
-    print()
-    print("=" * 60)
-    print(" SINHALA CARTOON FACTORY")
-    print("=" * 60)
+def check_character():
 
-    prepare_output()
-
-    # Check character
     if not CHARACTER_FILE.exists():
 
         raise FileNotFoundError(
-            f"""
-Character file missing:
-
-{CHARACTER_FILE}
-
-Make sure this file exists in GitHub:
-
-characters/cartoon_character_v2.blend
-"""
+            "\n"
+            "Character file is missing.\n"
+            "\n"
+            f"Expected file:\n{CHARACTER_FILE}\n"
+            "\n"
+            "Upload your Blender character as:\n"
+            "characters/cartoon_character_v2.blend\n"
         )
 
-    episode = get_episode_number()
 
-    episode_dir = (
-        OUTPUT_DIR /
-        f"episode_{episode:05d}"
-    )
+# ============================================================
+# CHECK BLENDER
+# ============================================================
 
-    episode_dir.mkdir(
-        parents=True,
-        exist_ok=True
-    )
+def check_blender():
 
-    frames_dir = (
-        episode_dir / "frames"
-    )
+    if not BLENDER.exists():
 
-    frames_dir.mkdir(
-        parents=True,
-        exist_ok=True
-    )
+        raise FileNotFoundError(
+            "\n"
+            "Blender was not found.\n"
+            "\n"
+            f"Expected:\n{BLENDER}\n"
+        )
 
-    # --------------------------------------------------
-    # STORY
-    # --------------------------------------------------
+
+# ============================================================
+# GENERATE STORY
+# ============================================================
+
+def create_story(
+    episode_number,
+    episode_dir
+):
 
     story = make_story(
-        episode
+        episode_number
     )
 
     story_file = (
@@ -144,13 +172,42 @@ characters/cartoon_character_v2.blend
     )
 
     print()
-    print("Episode:", episode)
-    print("Location:", story["location"])
-    print("Action:", story["action"])
+    print(
+        "Story generated."
+    )
 
-    # --------------------------------------------------
-    # BLENDER
-    # --------------------------------------------------
+    print(
+        "Episode:",
+        episode_number
+    )
+
+    print(
+        "Location:",
+        story.get(
+            "location",
+            "unknown"
+        )
+    )
+
+    print(
+        "Action:",
+        story.get(
+            "action",
+            "unknown"
+        )
+    )
+
+    return story, story_file
+
+
+# ============================================================
+# BLENDER
+# ============================================================
+
+def run_blender(
+    story_file,
+    frames_dir
+):
 
     render_script = (
         ROOT /
@@ -161,22 +218,41 @@ characters/cartoon_character_v2.blend
     if not render_script.exists():
 
         raise FileNotFoundError(
-            f"Missing:
-
-{render_script}"
+            "\n"
+            "Blender render script is missing.\n"
+            "\n"
+            f"Expected:\n{render_script}\n"
         )
 
     print()
-    print("Starting Blender...")
+    print(
+        "=" * 60
+    )
+
+    print(
+        "STARTING BLENDER"
+    )
+
+    print(
+        "=" * 60
+    )
 
     command = [
+
         str(BLENDER),
+
         "--background",
+
         str(CHARACTER_FILE),
+
         "--python",
+
         str(render_script),
+
         "--",
+
         str(story_file),
+
         str(frames_dir)
     ]
 
@@ -185,11 +261,16 @@ characters/cartoon_character_v2.blend
         check=True
     )
 
-    # --------------------------------------------------
-    # CHECK FRAMES
-    # --------------------------------------------------
 
-    frames = list(
+# ============================================================
+# CHECK FRAMES
+# ============================================================
+
+def check_frames(
+    frames_dir
+):
+
+    frames = sorted(
         frames_dir.glob(
             "frame_*.png"
         )
@@ -198,68 +279,278 @@ characters/cartoon_character_v2.blend
     if not frames:
 
         raise RuntimeError(
-            "Blender created no PNG frames."
+            "\n"
+            "Blender finished but no PNG frames were created.\n"
+            f"Frames directory:\n{frames_dir}\n"
         )
 
+    print()
     print(
-        f"Frames created: {len(frames)}"
+        f"PNG frames created: {len(frames)}"
     )
 
-    # --------------------------------------------------
-    # FFMPEG
-    # --------------------------------------------------
+    return frames
 
-    video = (
-        episode_dir /
-        f"cartoon_{episode:05d}.mp4"
-    )
+
+# ============================================================
+# FFMPEG
+# ============================================================
+
+def run_ffmpeg(
+    frames_dir,
+    video_file
+):
 
     print()
-    print("Starting FFmpeg...")
+    print(
+        "=" * 60
+    )
 
-    ffmpeg_command = [
+    print(
+        "STARTING FFMPEG"
+    )
+
+    print(
+        "=" * 60
+    )
+
+    command = [
+
         FFMPEG,
+
         "-y",
+
         "-framerate",
         "24",
+
         "-i",
+
         str(
             frames_dir /
             "frame_%04d.png"
         ),
+
         "-c:v",
         "libx264",
+
         "-preset",
         "medium",
+
         "-crf",
         "18",
+
         "-pix_fmt",
         "yuv420p",
+
         "-movflags",
         "+faststart",
-        str(video)
+
+        str(video_file)
     ]
 
     subprocess.run(
-        ffmpeg_command,
+        command,
         check=True
     )
 
-    if not video.exists():
+
+# ============================================================
+# VERIFY VIDEO
+# ============================================================
+
+def verify_video(
+    video_file
+):
+
+    if not video_file.exists():
 
         raise RuntimeError(
-            "FFmpeg did not create the MP4."
+            "\n"
+            "FFmpeg completed but the MP4 was not created.\n"
+            f"Expected:\n{video_file}\n"
         )
 
-    print()
-    print("=" * 60)
-    print(" EPISODE COMPLETE")
-    print("=" * 60)
+    size = (
+        video_file.stat().st_size
+    )
+
+    if size <= 0:
+
+        raise RuntimeError(
+            "\n"
+            "The generated MP4 is empty.\n"
+            f"File:\n{video_file}\n"
+        )
+
+    size_mb = (
+        size /
+        (1024 * 1024)
+    )
 
     print()
-    print(video)
-    print()
+    print(
+        f"Video size: {size_mb:.2f} MB"
+    )
 
+
+# ============================================================
+# MAIN
+# ============================================================
+
+def main():
+
+    print()
+    print(
+        "=" * 60
+    )
+
+    print(
+        "SINHALA CARTOON FACTORY"
+    )
+
+    print(
+        "=" * 60
+    )
+
+    # --------------------------------------------------------
+    # Prepare directories
+    # --------------------------------------------------------
+
+    prepare_output()
+
+    # --------------------------------------------------------
+    # Check required files
+    # --------------------------------------------------------
+
+    check_character()
+
+    check_blender()
+
+    # --------------------------------------------------------
+    # Episode number
+    # --------------------------------------------------------
+
+    episode_number = (
+        get_episode_number()
+    )
+
+    print()
+    print(
+        f"Creating Episode {episode_number}"
+    )
+
+    # --------------------------------------------------------
+    # Episode directory
+    # --------------------------------------------------------
+
+    episode_dir = (
+        OUTPUT_DIR /
+        f"episode_{episode_number:05d}"
+    )
+
+    episode_dir.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    # --------------------------------------------------------
+    # Frames
+    # --------------------------------------------------------
+
+    frames_dir = (
+        episode_dir /
+        "frames"
+    )
+
+    frames_dir.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    # --------------------------------------------------------
+    # Story
+    # --------------------------------------------------------
+
+    story, story_file = create_story(
+        episode_number,
+        episode_dir
+    )
+
+    # --------------------------------------------------------
+    # Blender
+    # --------------------------------------------------------
+
+    run_blender(
+        story_file,
+        frames_dir
+    )
+
+    # --------------------------------------------------------
+    # Verify PNG frames
+    # --------------------------------------------------------
+
+    check_frames(
+        frames_dir
+    )
+
+    # --------------------------------------------------------
+    # MP4
+    # --------------------------------------------------------
+
+    video_file = (
+        episode_dir /
+        f"cartoon_{episode_number:05d}.mp4"
+    )
+
+    run_ffmpeg(
+        frames_dir,
+        video_file
+    )
+
+    # --------------------------------------------------------
+    # Verify MP4
+    # --------------------------------------------------------
+
+    verify_video(
+        video_file
+    )
+
+    # --------------------------------------------------------
+    # Finished
+    # --------------------------------------------------------
+
+    print()
+    print(
+        "=" * 60
+    )
+
+    print(
+        "CARTOON EPISODE COMPLETE"
+    )
+
+    print(
+        "=" * 60
+    )
+
+    print()
+    print(
+        f"Episode: {episode_number}"
+    )
+
+    print(
+        f"Video: {video_file}"
+    )
+
+    print()
+    print(
+        "SUCCESS"
+    )
+
+
+# ============================================================
+# START
+# ============================================================
 
 if __name__ == "__main__":
+
     main()
