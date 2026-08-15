@@ -19,16 +19,28 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
 
-      - name: Checkout
-        uses: actions/checkout@v6
+      # =====================================================
+      # CHECKOUT REPOSITORY + GIT LFS
+      # =====================================================
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+          fetch-depth: 1
+
+      # =====================================================
+      # INSTALL SYSTEM SOFTWARE
+      # =====================================================
 
       - name: Install system packages
         run: |
           sudo apt-get update
+
           sudo apt-get install -y \
             ffmpeg \
             python3 \
@@ -44,8 +56,13 @@ jobs:
             libsm6 \
             libice6
 
-      - name: Install Blender
+      # =====================================================
+      # INSTALL BLENDER
+      # =====================================================
+
+      - name: Install Blender 5.0.1
         run: |
+
           wget -q \
             https://download.blender.org/release/Blender5.0/blender-5.0.1-linux-x64.tar.xz \
             -O blender.tar.xz
@@ -59,35 +76,96 @@ jobs:
           /opt/blender/blender \
             --version
 
+      # =====================================================
+      # INSTALL PYTHON
+      # =====================================================
+
       - name: Install Python packages
         run: |
+
           python3 -m pip install \
             --user \
             -r requirements.txt
+
+      # =====================================================
+      # VERIFY BLEND FILE
+      # =====================================================
+
+      - name: Verify Blender character file
+        run: |
+
+          echo "Checking character file..."
+
+          ls -lh characters/
+
+          echo ""
+          echo "File information:"
+          file characters/cartoon_character_v2.blend
+
+          echo ""
+          echo "File size:"
+          du -h characters/cartoon_character_v2.blend
+
+          echo ""
+          echo "Git LFS status:"
+          git lfs ls-files
+
+          echo ""
+          echo "Testing Blender file..."
+
+          /opt/blender/blender \
+            --background \
+            characters/cartoon_character_v2.blend \
+            --python-expr "print('BLENDER FILE OPENED SUCCESSFULLY')"
+
+      # =====================================================
+      # GENERATE CARTOON
+      # =====================================================
 
       - name: Generate episode
         env:
           PYTHONPATH: ${{ github.workspace }}/src
         run: |
+
           python3 src/generate_episode.py
 
-      - name: Find generated video
+      # =====================================================
+      # SHOW OUTPUT
+      # =====================================================
+
+      - name: Show generated files
+        if: always()
         run: |
+
+          echo "Generated files:"
+
           find output \
             -type f \
-            -name "*.mp4" \
-            -print
+            -print \
+            2>/dev/null || true
+
+      # =====================================================
+      # UPLOAD MP4
+      # =====================================================
 
       - name: Upload cartoon
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: sinhala-cartoon-${{ github.run_number }}
           path: output/**/*.mp4
+          if-no-files-found: error
           retention-days: 7
 
+      # =====================================================
+      # UPLOAD STORY
+      # =====================================================
+
       - name: Upload story
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: story-${{ github.run_number }}
           path: output/**/story.json
+          if-no-files-found: error
           retention-days: 7
