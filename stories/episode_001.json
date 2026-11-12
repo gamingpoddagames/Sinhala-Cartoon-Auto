@@ -1,0 +1,26 @@
+{
+  "title": "කමල්ගේ පුංචි ගමන",
+  "language": "si-LK",
+  "scenes": [
+    {
+      "seconds": 3,
+      "action": "talk",
+      "dialogue": "ආයුබෝවන් යාළුවනේ! අද අපි ලස්සන ගමනක් යමු."
+    },
+    {
+      "seconds": 4,
+      "action": "walk",
+      "dialogue": "කමල් හෙමින් හෙමින් ගස් අතරින් ඇවිද ගියා."
+    },
+    {
+      "seconds": 3,
+      "action": "jump",
+      "dialogue": "එයා සතුටින් උඩ පැන්නා!"
+    },
+    {
+      "seconds": 3,
+      "action": "talk",
+      "dialogue": "අපි හෙටත් අලුත් කතාවකින් හමුවෙමු!"
+    }
+  ]
+}
