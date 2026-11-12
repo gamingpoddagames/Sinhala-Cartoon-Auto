@@ -4,11 +4,13 @@ from PIL import Image,ImageDraw
 p=argparse.ArgumentParser()
 p.add_argument('--story',required=True);p.add_argument('--output',required=True)
 p.add_argument('--width',type=int,default=640);p.add_argument('--height',type=int,default=360)
-p.add_argument('--fps',type=int,default=12);a=p.parse_args()
+p.add_argument('--fps',type=int,default=12);p.add_argument('--cues',default=None)
+a=p.parse_args()
 data=json.loads(Path(a.story).read_text(encoding='utf-8'))
+cues=json.loads(Path(a.cues).read_text(encoding='utf-8'))['mouth'] if a.cues else None
 W,H=a.width,a.height;out=Path(a.output);out.mkdir(parents=True,exist_ok=True)
 def circ(d,box,color):d.ellipse(tuple(int(z) for z in box),fill=color)
-def frame(f,k,n,action):
+def frame(f,k,n,action,mouth_open):
  im=Image.new('RGB',(W,H),'#87cefa');d=ImageDraw.Draw(im)
  d.ellipse((-W//4,H//3,W//2,H),fill='#69b77f')
  d.ellipse((W//4,H//3,W+W//4,H),fill='#55a96a')
@@ -34,12 +36,12 @@ def frame(f,k,n,action):
  for ex in [-Z(13),Z(13)]:
   circ(d,(cx+ex-Z(8),cy-Z(151),cx+ex+Z(8),cy-Z(132)),'white')
   circ(d,(cx+ex-Z(2),cy-Z(146),cx+ex+Z(3),cy-Z(137)),'#242637')
- if action=='talk' and k//3%2==0: circ(d,(cx-Z(10),cy-Z(119),cx+Z(10),cy-Z(100)),'#78343d')
+ if mouth_open: circ(d,(cx-Z(10),cy-Z(119),cx+Z(10),cy-Z(100)),'#78343d')
  else:d.arc((cx-Z(13),cy-Z(123),cx+Z(13),cy-Z(104)),0,180,fill='#78343d',width=max(1,Z(3)))
  return im
 f=0
 for sc in data['scenes']:
  n=round(float(sc.get('seconds',3))*a.fps)
  for k in range(n):
-  f+=1;frame(f,k,n,sc.get('action','talk')).save(out/f'{f:06d}.png')
+  f+=1;frame(f,k,n,sc.get('action','talk'),(cues[f-1]>.13 if cues and f-1<len(cues) else sc.get('action','talk')=='talk' and k//3%2==0)).save(out/f'{f:06d}.png')
 print('RENDER_DONE',f)
