@@ -5,8 +5,10 @@ from pathlib import Path
 p=argparse.ArgumentParser()
 p.add_argument('--story',required=True);p.add_argument('--output',required=True)
 p.add_argument('--resolution',type=int,default=360);p.add_argument('--fps',type=int,default=12)
+p.add_argument('--cues',default=None)
 a=p.parse_args(sys.argv[sys.argv.index('--')+1:])
 story=json.loads(Path(a.story).read_text(encoding='utf-8'))
+cues=json.loads(Path(a.cues).read_text(encoding='utf-8'))['mouth'] if a.cues else None
 out=Path(a.output);out.mkdir(parents=True,exist_ok=True)
 bpy.ops.object.select_all(action='SELECT');bpy.ops.object.delete(use_global=False)
 scene=bpy.context.scene
@@ -62,7 +64,7 @@ for index,shot in enumerate(story['scenes']):
   rig.location.x=(-2+4*t) if action=='walk' else (1 if index else -2)
   rig.location.z=math.sin(math.pi*t)*1.1 if action=='jump' else (abs(math.sin(k*.3))*.06 if action=='walk' else 0)
   rig.rotation_euler.z=math.sin(k*.14)*.06
-  lips.scale.z=.06+(.13*abs(math.sin(k*.55)) if action=='talk' else 0)
+  lips.scale.z=.06+((.15*cues[f-1] if f-1<len(cues) else 0) if cues else (.13*abs(math.sin(k*.55)) if action=='talk' else 0))
   scene.frame_set(f);scene.render.filepath=str(out/f'{f:06d}.png')
   bpy.ops.render.render(write_still=True)
 print('RENDER_DONE 3D',f)
