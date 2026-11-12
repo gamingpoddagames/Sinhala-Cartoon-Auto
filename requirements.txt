@@ -1,1 +1,2 @@
-edge-tts==7.2.7
+Pillow>=10,<13
+# Optional local Sinhala TTS: pip install piper-tts
